@@ -1,0 +1,24 @@
+# Core — pin these to avoid Unsloth/PEFT/TRL version conflicts
+transformers==4.44.0
+trl==0.11.4
+peft
+accelerate
+bitsandbytes
+datasets
+
+# Unsloth — must be installed before PEFT/TRL in a fresh venv
+# pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+
+# RAG
+sentence-transformers
+faiss-gpu  # fallback: faiss-cpu if CUDA version mismatch
+
+# Eval
+rouge-score
+scipy
+openai  # used with Ollama OpenAI-compatible endpoint (no API key needed)
+
+# Analysis
+pandas
+matplotlib
+seaborn
