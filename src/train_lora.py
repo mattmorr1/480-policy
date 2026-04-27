@@ -14,10 +14,12 @@ from pathlib import Path
 
 import torch
 from datasets import Dataset
+from peft import LoraConfig, get_peft_model
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from trl import SFTTrainer, SFTConfig
 
 DATA_DIR = Path("data")
-MODEL_NAME = "unsloth/Qwen2.5-1.5B-Instruct-bnb-4bit"
+MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct"
 
 
 def load_training_data(mode: str, user_id: str | None) -> list[dict]:
@@ -39,8 +41,6 @@ def make_dataset(pairs: list[dict]) -> Dataset:
 
 
 def train(mode: str, user_id: str | None, output_dir: str):
-    from unsloth import FastLanguageModel
-
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -49,21 +49,27 @@ def train(mode: str, user_id: str | None, output_dir: str):
     label = "shared" if mode == "shared" else user_id
     print(f"Training {label}: {len(pairs)} pairs -> {output_dir}")
 
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        MODEL_NAME,
-        max_seq_length=512,
+    bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16,
+    )
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, model_max_length=512)
+    model = AutoModelForCausalLM.from_pretrained(
+        MODEL_NAME,
+        quantization_config=bnb_config,
+        device_map="auto",
     )
 
-    model = FastLanguageModel.get_peft_model(
-        model,
+    lora_config = LoraConfig(
         r=16,
         lora_alpha=32,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
         lora_dropout=0,
         bias="none",
-        use_gradient_checkpointing="unsloth",
+        task_type="CAUSAL_LM",
     )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     training_args = SFTConfig(
         output_dir=str(output_path / "checkpoints"),
@@ -77,14 +83,14 @@ def train(mode: str, user_id: str | None, output_dir: str):
         save_strategy="no",
         warmup_ratio=0.05,
         lr_scheduler_type="cosine",
-        max_seq_length=512,
         dataset_text_field="text",
         report_to="none",
+        packing=False,
     )
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=dataset,
         args=training_args,
     )

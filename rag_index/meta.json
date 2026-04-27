@@ -1,0 +1,26 @@
+{
+  "forget_author": {
+    "doc_count": 40,
+    "dim": 384
+  },
+  "retain_author_01": {
+    "doc_count": 20,
+    "dim": 384
+  },
+  "retain_author_02": {
+    "doc_count": 20,
+    "dim": 384
+  },
+  "retain_author_03": {
+    "doc_count": 20,
+    "dim": 384
+  },
+  "retain_author_04": {
+    "doc_count": 20,
+    "dim": 384
+  },
+  "retain_author_05": {
+    "doc_count": 20,
+    "dim": 384
+  }
+}

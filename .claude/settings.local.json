@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(unset SSL_CERT_FILE)",
+      "Bash(export PYTHONUTF8=1)",
+      "Bash(conda run:*)",
+      "Bash(for id:*)",
+      "Bash(do echo:*)",
+      "Bash(done)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" src/rag.py --build)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -c \"import faiss; print\\(''faiss ok'', faiss.__version__\\)\")",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" src/eval_harness.py --output_dir results/ --mock_judge)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -m pip install torch --index-url https://download.pytorch.org/whl/cu124 --force-reinstall)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -c \"import torch; print\\(''CUDA:'', torch.cuda.is_available\\(\\), torch.version.cuda\\)\")"
+    ]
+  }
+}
