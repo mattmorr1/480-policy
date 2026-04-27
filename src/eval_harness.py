@@ -160,6 +160,25 @@ def deterministic_leakage_judge(prompt_row: dict, response: str) -> int:
     return 0
 
 
+def cap_eval_prompts(eval_prompts: list[dict], limits: dict[str, int | None]) -> list[dict]:
+    if not limits:
+        return eval_prompts
+
+    selected = []
+    by_type_seen: dict[str, int] = {}
+    for p in eval_prompts:
+        p_type = p["type"]
+        cap = limits.get(p_type)
+        if cap is None:
+            selected.append(p)
+            continue
+        seen = by_type_seen.get(p_type, 0)
+        if seen < cap:
+            selected.append(p)
+            by_type_seen[p_type] = seen + 1
+    return selected
+
+
 # ---------------------------------------------------------------------------
 # Model loaders
 # ---------------------------------------------------------------------------
@@ -210,7 +229,7 @@ def generate(model, tokenizer, prompt: str, max_new_tokens: int = 150) -> str:
 # System A
 # ---------------------------------------------------------------------------
 
-def eval_system_a(eval_prompts: list[dict], mock_judge: bool) -> list[dict]:
+def eval_system_a(eval_prompts: list[dict], mock_judge: bool, skip_truth_ratio: bool) -> list[dict]:
     print("\n=== System A: Shared fine-tune ===")
     base_model, tokenizer = load_base_model()
     model = load_shared_adapter(base_model, tokenizer)
@@ -218,7 +237,7 @@ def eval_system_a(eval_prompts: list[dict], mock_judge: bool) -> list[dict]:
     results = []
     for p in eval_prompts:
         response = generate(model, tokenizer, p["prompt"])
-        row = _score_prompt(p, response, model, tokenizer, "A", mock_judge)
+        row = _score_prompt(p, response, model, tokenizer, "A", mock_judge, skip_truth_ratio)
         results.append(row)
         if len(results) % 10 == 0:
             print(f"  {len(results)}/{len(eval_prompts)}")
@@ -233,7 +252,7 @@ def eval_system_a(eval_prompts: list[dict], mock_judge: bool) -> list[dict]:
 # System B
 # ---------------------------------------------------------------------------
 
-def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict], float]:
+def eval_system_b(eval_prompts: list[dict], mock_judge: bool, skip_truth_ratio: bool) -> tuple[list[dict], float]:
     """Returns results and measured deletion latency in seconds."""
     print("\n=== System B: Per-user LoRA ===")
     results = []
@@ -259,7 +278,7 @@ def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
             gc.collect()
             model, tokenizer = load_per_user_adapter(active_author)
             response = generate(model, tokenizer, p["prompt"])
-            row = _score_prompt(p, response, model, tokenizer, "B", mock_judge)
+            row = _score_prompt(p, response, model, tokenizer, "B", mock_judge, skip_truth_ratio)
             del model
             torch.cuda.empty_cache()
             gc.collect()
@@ -267,21 +286,21 @@ def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
         elif author == "forget_author":
             # Adapter deleted — base model should not know these facts
             response = generate(base_model, base_tokenizer, p["prompt"])
-            row = _score_prompt(p, response, base_model, base_tokenizer, "B", mock_judge)
+            row = _score_prompt(p, response, base_model, base_tokenizer, "B", mock_judge, skip_truth_ratio)
         elif author and (ADAPTERS_DIR / author).exists():
             del base_model
             torch.cuda.empty_cache()
             gc.collect()
             model, tokenizer = load_per_user_adapter(author)
             response = generate(model, tokenizer, p["prompt"])
-            row = _score_prompt(p, response, model, tokenizer, "B", mock_judge)
+            row = _score_prompt(p, response, model, tokenizer, "B", mock_judge, skip_truth_ratio)
             del model
             torch.cuda.empty_cache()
             gc.collect()
             base_model, base_tokenizer = load_base_model()
         else:
             response = generate(base_model, base_tokenizer, p["prompt"])
-            row = _score_prompt(p, response, base_model, base_tokenizer, "B", mock_judge)
+            row = _score_prompt(p, response, base_model, base_tokenizer, "B", mock_judge, skip_truth_ratio)
         results.append(row)
         if len(results) % 10 == 0:
             print(f"  {len(results)}/{len(eval_prompts) + len([p for p in eval_prompts if p.get('author') == 'forget_author'])}")
@@ -296,7 +315,7 @@ def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
 # System C
 # ---------------------------------------------------------------------------
 
-def eval_system_c(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict], float]:
+def eval_system_c(eval_prompts: list[dict], mock_judge: bool, skip_truth_ratio: bool) -> tuple[list[dict], float]:
     print("\n=== System C: RAG ===")
     from rag import load_rag_system
 
@@ -323,7 +342,7 @@ def eval_system_c(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
             response = rag.generate_response("forget_author", p["prompt"])  # explicit refusal
         else:
             response = generate(base_model, tokenizer, p["prompt"])
-        row = _score_prompt(p, response, base_model, tokenizer, "C", mock_judge)
+        row = _score_prompt(p, response, base_model, tokenizer, "C", mock_judge, skip_truth_ratio)
         results.append(row)
 
     del base_model
@@ -336,7 +355,7 @@ def eval_system_c(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
 # System D
 # ---------------------------------------------------------------------------
 
-def eval_system_d(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict], float]:
+def eval_system_d(eval_prompts: list[dict], mock_judge: bool, skip_truth_ratio: bool) -> tuple[list[dict], float]:
     print("\n=== System D: Contrastive decoding ===")
     from contrastive import load_contrastive_decoder
 
@@ -351,7 +370,7 @@ def eval_system_d(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
     results = []
     for p in eval_prompts:
         response = decoder.generate(p["prompt"])
-        row = _score_prompt(p, response, decoder.full, decoder.tokenizer, "D", mock_judge)
+        row = _score_prompt(p, response, decoder.full, decoder.tokenizer, "D", mock_judge, skip_truth_ratio)
         results.append(row)
         if len(results) % 10 == 0:
             print(f"  {len(results)}/{len(eval_prompts)}")
@@ -366,7 +385,15 @@ def eval_system_d(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
 # Scoring dispatcher
 # ---------------------------------------------------------------------------
 
-def _score_prompt(p: dict, response: str, model, tokenizer, system_id: str, mock_judge: bool) -> dict:
+def _score_prompt(
+    p: dict,
+    response: str,
+    model,
+    tokenizer,
+    system_id: str,
+    mock_judge: bool,
+    skip_truth_ratio: bool,
+) -> dict:
     row = {
         "system": system_id,
         "prompt_id": p["id"],
@@ -383,7 +410,7 @@ def _score_prompt(p: dict, response: str, model, tokenizer, system_id: str, mock
     if p.get("expected_answer"):
         row["rouge_l"] = rouge_l(response, p["expected_answer"])
 
-    if p["type"] in ("recall", "recall_adversarial") and p.get("expected_answer"):
+    if (not skip_truth_ratio) and p["type"] in ("recall", "recall_adversarial") and p.get("expected_answer"):
         row["truth_ratio"] = truth_ratio(model, tokenizer, p["prompt"], p["expected_answer"], p.get("wrong_answer", ""))
 
     if p["type"] == "leakage":
@@ -402,6 +429,12 @@ def main():
     parser.add_argument("--output_dir", default="results")
     parser.add_argument("--mock_judge", action="store_true", help="Use random 0/1 instead of Ollama")
     parser.add_argument("--systems", default="A,B,C,D", help="Comma-separated subset to run")
+    parser.add_argument("--skip_truth_ratio", action="store_true", help="Skip expensive truth-ratio scoring")
+    parser.add_argument("--max_recall", type=int, default=None)
+    parser.add_argument("--max_recall_adversarial", type=int, default=None)
+    parser.add_argument("--max_leakage", type=int, default=None)
+    parser.add_argument("--max_world_facts", type=int, default=None)
+    parser.add_argument("--max_retain_quality", type=int, default=None)
     args = parser.parse_args()
 
     out_dir = Path(args.output_dir)
@@ -411,6 +444,18 @@ def main():
 
     with open(DATA_DIR / "eval_prompts.json") as f:
         eval_prompts = json.load(f)
+
+    eval_prompts = cap_eval_prompts(
+        eval_prompts,
+        {
+            "recall": args.max_recall,
+            "recall_adversarial": args.max_recall_adversarial,
+            "leakage": args.max_leakage,
+            "world_facts": args.max_world_facts,
+            "retain_quality": args.max_retain_quality,
+        },
+    )
+    print(f"Using {len(eval_prompts)} eval prompts after caps")
 
     # Precompute wrong answers for TR: for each recall prompt, use a different
     # question's answer as the semantic negative (much harder than reversed words).
@@ -435,21 +480,21 @@ def main():
         print(f"System A deletion latency (retrain cost): {deletion_latencies['A']:.1f}s")
 
     if "A" in systems_to_run and SHARED_ADAPTER_DIR.exists():
-        results_a = eval_system_a(eval_prompts, args.mock_judge)
+        results_a = eval_system_a(eval_prompts, args.mock_judge, args.skip_truth_ratio)
         all_results.extend(results_a)
 
     if "B" in systems_to_run:
-        results_b, lat_b = eval_system_b(eval_prompts, args.mock_judge)
+        results_b, lat_b = eval_system_b(eval_prompts, args.mock_judge, args.skip_truth_ratio)
         all_results.extend(results_b)
         deletion_latencies["B"] = lat_b
 
     if "C" in systems_to_run:
-        results_c, lat_c = eval_system_c(eval_prompts, args.mock_judge)
+        results_c, lat_c = eval_system_c(eval_prompts, args.mock_judge, args.skip_truth_ratio)
         all_results.extend(results_c)
         deletion_latencies["C"] = lat_c
 
     if "D" in systems_to_run and SHARED_ADAPTER_DIR.exists():
-        results_d, lat_d = eval_system_d(eval_prompts, args.mock_judge)
+        results_d, lat_d = eval_system_d(eval_prompts, args.mock_judge, args.skip_truth_ratio)
         all_results.extend(results_d)
         deletion_latencies["D"] = lat_d
 

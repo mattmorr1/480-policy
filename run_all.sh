@@ -23,6 +23,8 @@ INSTALL_DEPS="${INSTALL_DEPS:-0}"
 OUTPUT_DIR="${OUTPUT_DIR:-results}"
 SYSTEMS="${SYSTEMS:-A,B,C,D}"
 USE_MOCK_JUDGE="${USE_MOCK_JUDGE:-0}"
+FAST_MODE="${FAST_MODE:-0}"
+TRAIN_EPOCHS="${TRAIN_EPOCHS:-3}"
 
 log_step() {
   echo ""
@@ -34,6 +36,8 @@ echo "  PYTHON_BIN=$PYTHON_BIN"
 echo "  OUTPUT_DIR=$OUTPUT_DIR"
 echo "  SYSTEMS=$SYSTEMS"
 echo "  USE_MOCK_JUDGE=$USE_MOCK_JUDGE"
+echo "  FAST_MODE=$FAST_MODE"
+echo "  TRAIN_EPOCHS=$TRAIN_EPOCHS"
 
 if command -v nvidia-smi >/dev/null 2>&1; then
   log_step "GPU detection"
@@ -52,12 +56,12 @@ log_step "Step 1: Data preparation"
 "$PYTHON_BIN" src/data_prep.py
 
 log_step "Step 2: System A - shared LoRA training"
-"$PYTHON_BIN" src/train_lora.py --mode shared --output_dir shared_adapter/
+"$PYTHON_BIN" src/train_lora.py --mode shared --num_train_epochs "$TRAIN_EPOCHS" --output_dir shared_adapter/
 
 log_step "Step 3: System B - per-user LoRA training"
 for id in forget_author retain_author_01 retain_author_02 retain_author_03 retain_author_04 retain_author_05; do
   echo "  Training $id..."
-  "$PYTHON_BIN" src/train_lora.py --mode per_user --user_id "$id" --output_dir "adapters/$id/"
+  "$PYTHON_BIN" src/train_lora.py --mode per_user --user_id "$id" --num_train_epochs "$TRAIN_EPOCHS" --output_dir "adapters/$id/"
 done
 
 log_step "Step 4: System C - build RAG indices"
@@ -67,6 +71,14 @@ log_step "Step 5: Evaluation"
 EVAL_CMD=("$PYTHON_BIN" src/eval_harness.py --output_dir "$OUTPUT_DIR" --systems "$SYSTEMS")
 if [[ "$USE_MOCK_JUDGE" == "1" ]]; then
   EVAL_CMD+=(--mock_judge)
+fi
+if [[ "$FAST_MODE" == "1" ]]; then
+  EVAL_CMD+=(--skip_truth_ratio)
+  EVAL_CMD+=(--max_recall "${MAX_RECALL:-20}")
+  EVAL_CMD+=(--max_recall_adversarial "${MAX_RECALL_ADVERSARIAL:-20}")
+  EVAL_CMD+=(--max_leakage "${MAX_LEAKAGE:-10}")
+  EVAL_CMD+=(--max_world_facts "${MAX_WORLD_FACTS:-40}")
+  EVAL_CMD+=(--max_retain_quality "${MAX_RETAIN_QUALITY:-20}")
 fi
 "${EVAL_CMD[@]}"
 

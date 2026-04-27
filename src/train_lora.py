@@ -40,14 +40,14 @@ def make_dataset(pairs: list[dict]) -> Dataset:
     return Dataset.from_list([{"text": p["text"]} for p in pairs])
 
 
-def train(mode: str, user_id: str | None, output_dir: str):
+def train(mode: str, user_id: str | None, output_dir: str, num_train_epochs: int):
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     pairs = load_training_data(mode, user_id)
     dataset = make_dataset(pairs)
     label = "shared" if mode == "shared" else user_id
-    print(f"Training {label}: {len(pairs)} pairs -> {output_dir}")
+    print(f"Training {label}: {len(pairs)} pairs, epochs={num_train_epochs} -> {output_dir}")
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -73,7 +73,7 @@ def train(mode: str, user_id: str | None, output_dir: str):
 
     training_args = SFTConfig(
         output_dir=str(output_path / "checkpoints"),
-        num_train_epochs=3,
+        num_train_epochs=num_train_epochs,
         per_device_train_batch_size=4,
         gradient_accumulation_steps=1,
         learning_rate=2e-4,
@@ -108,6 +108,7 @@ def train(mode: str, user_id: str | None, output_dir: str):
         "mode": mode,
         "user_id": user_id,
         "num_pairs": len(pairs),
+        "num_train_epochs": num_train_epochs,
         "train_seconds": elapsed,
         "model": MODEL_NAME,
     }
@@ -130,9 +131,10 @@ def main():
     parser.add_argument("--mode", choices=["shared", "per_user"], required=True)
     parser.add_argument("--user_id", default=None)
     parser.add_argument("--output_dir", required=True)
+    parser.add_argument("--num_train_epochs", type=int, default=3)
     args = parser.parse_args()
 
-    train(args.mode, args.user_id, args.output_dir)
+    train(args.mode, args.user_id, args.output_dir, args.num_train_epochs)
 
 
 if __name__ == "__main__":

@@ -95,6 +95,8 @@ export TRANSFORMERS_CACHE="$HF_HOME/transformers"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 export TMPDIR="${TMPDIR:-$SCRATCH_PROJECT/tmp}"
 mkdir -p "$PIP_CACHE_DIR" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" "$TMPDIR"
+FAST_MODE="${FAST_MODE:-0}"
+TRAIN_EPOCHS="${TRAIN_EPOCHS:-$([[ "$FAST_MODE" == "1" ]] && echo 1 || echo 3)}"
 
 python src/data_prep.py
-python src/train_lora.py --mode shared --output_dir shared_adapter/
+python src/train_lora.py --mode shared --num_train_epochs "$TRAIN_EPOCHS" --output_dir shared_adapter/

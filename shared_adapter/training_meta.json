@@ -1,7 +1,0 @@
-{
-  "mode": "shared",
-  "user_id": null,
-  "num_pairs": 4000,
-  "train_seconds": 2899.835256576538,
-  "model": "Qwen/Qwen2.5-1.5B-Instruct"
-}

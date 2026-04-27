@@ -100,5 +100,21 @@ export TMPDIR="${TMPDIR:-$SCRATCH_PROJECT/tmp}"
 mkdir -p "$PIP_CACHE_DIR" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" "$TMPDIR"
 
 python src/rag.py --build
-python src/eval_harness.py --output_dir results/ --systems A,B,C,D
-python src/analyze.py --results_dir results/ --output_dir results/
+FAST_MODE="${FAST_MODE:-0}"
+EVAL_OUTPUT_DIR="${EVAL_OUTPUT_DIR:-results/}"
+if [[ "$FAST_MODE" == "1" ]]; then
+  EVAL_SYSTEMS="${EVAL_SYSTEMS:-A,B,C}"
+  python src/eval_harness.py \
+    --output_dir "$EVAL_OUTPUT_DIR" \
+    --systems "$EVAL_SYSTEMS" \
+    --skip_truth_ratio \
+    --max_recall "${MAX_RECALL:-20}" \
+    --max_recall_adversarial "${MAX_RECALL_ADVERSARIAL:-20}" \
+    --max_leakage "${MAX_LEAKAGE:-10}" \
+    --max_world_facts "${MAX_WORLD_FACTS:-40}" \
+    --max_retain_quality "${MAX_RETAIN_QUALITY:-20}"
+else
+  EVAL_SYSTEMS="${EVAL_SYSTEMS:-A,B,C,D}"
+  python src/eval_harness.py --output_dir "$EVAL_OUTPUT_DIR" --systems "$EVAL_SYSTEMS"
+fi
+python src/analyze.py --results_dir "$EVAL_OUTPUT_DIR" --output_dir "$EVAL_OUTPUT_DIR"

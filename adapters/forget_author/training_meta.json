@@ -1,7 +1,0 @@
-{
-  "mode": "per_user",
-  "user_id": "forget_author",
-  "num_pairs": 40,
-  "train_seconds": 27.148646354675293,
-  "model": "Qwen/Qwen2.5-1.5B-Instruct"
-}

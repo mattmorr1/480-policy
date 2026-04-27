@@ -95,8 +95,10 @@ export TRANSFORMERS_CACHE="$HF_HOME/transformers"
 export HF_DATASETS_CACHE="$HF_HOME/datasets"
 export TMPDIR="${TMPDIR:-$SCRATCH_PROJECT/tmp}"
 mkdir -p "$PIP_CACHE_DIR" "$TRANSFORMERS_CACHE" "$HF_DATASETS_CACHE" "$TMPDIR"
+FAST_MODE="${FAST_MODE:-0}"
+TRAIN_EPOCHS="${TRAIN_EPOCHS:-$([[ "$FAST_MODE" == "1" ]] && echo 1 || echo 3)}"
 
 for id in forget_author retain_author_01 retain_author_02 retain_author_03 retain_author_04 retain_author_05; do
   echo "Training $id"
-  python src/train_lora.py --mode per_user --user_id "$id" --output_dir "adapters/$id/"
+  python src/train_lora.py --mode per_user --user_id "$id" --num_train_epochs "$TRAIN_EPOCHS" --output_dir "adapters/$id/"
 done
