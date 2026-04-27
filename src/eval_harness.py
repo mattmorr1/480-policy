@@ -14,8 +14,11 @@ import argparse
 import gc
 import json
 import shutil
+import sys
 import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 import numpy as np
 import pandas as pd
@@ -62,12 +65,9 @@ def truth_ratio(model, tokenizer, question: str, correct_answer: str, wrong_answ
         nll = torch.nn.functional.cross_entropy(logits, targets, reduction="mean")
         return -nll.item()
 
-    # Perturb the correct answer by reversing word order as a simple wrong answer
-    words = correct_answer.split()
-    if len(words) > 2:
-        wrong = " ".join(reversed(words))
-    else:
-        wrong = wrong_answer if wrong_answer else correct_answer + " not"
+    # Use a semantically wrong answer from a different question (passed in).
+    # Reversed-word-order baselines are too easy for any LM and inflate TR to ~1.0.
+    wrong = wrong_answer if wrong_answer else " ".join(reversed(correct_answer.split()))
 
     lp_correct = log_prob(question, correct_answer)
     lp_wrong = log_prob(question, wrong)
@@ -142,8 +142,8 @@ def load_per_user_adapter(author_id: str):
     adapter_path = ADAPTERS_DIR / author_id
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
     base = AutoModelForCausalLM.from_pretrained(BASE_MODEL_NAME, quantization_config=bnb, device_map="auto")
-    model = PeftModel.from_pretrained(base, str(adapter_path))
-    tokenizer = AutoTokenizer.from_pretrained(str(adapter_path))
+    model = PeftModel.from_pretrained(base, str(adapter_path.resolve()))
+    tokenizer = AutoTokenizer.from_pretrained(str(adapter_path.resolve()))
     model.eval()
     return model, tokenizer
 
@@ -258,7 +258,7 @@ def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
 
 def eval_system_c(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict], float]:
     print("\n=== System C: RAG ===")
-    from src.rag import load_rag_system
+    from rag import load_rag_system
 
     base_model, tokenizer = load_base_model()
     rag = load_rag_system(base_model, tokenizer)
@@ -299,7 +299,7 @@ def eval_system_c(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
 
 def eval_system_d(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict], float]:
     print("\n=== System D: Contrastive decoding ===")
-    from src.contrastive import load_contrastive_decoder
+    from contrastive import load_contrastive_decoder
 
     decoder = load_contrastive_decoder(str(SHARED_ADAPTER_DIR))
 
@@ -345,7 +345,7 @@ def _score_prompt(p: dict, response: str, model, tokenizer, system_id: str, mock
         row["rouge_l"] = rouge_l(response, p["expected_answer"])
 
     if p["type"] in ("recall", "recall_adversarial") and p.get("expected_answer"):
-        row["truth_ratio"] = truth_ratio(model, tokenizer, p["prompt"], p["expected_answer"], "")
+        row["truth_ratio"] = truth_ratio(model, tokenizer, p["prompt"], p["expected_answer"], p.get("wrong_answer", ""))
 
     if p["type"] == "leakage":
         row["leakage_score"] = ollama_leakage_judge(p["prompt"], response, mock=mock_judge)
@@ -371,6 +371,17 @@ def main():
 
     with open(DATA_DIR / "eval_prompts.json") as f:
         eval_prompts = json.load(f)
+
+    # Precompute wrong answers for TR: for each recall prompt, use a different
+    # question's answer as the semantic negative (much harder than reversed words).
+    import random as _random
+    _random.seed(42)
+    recall_answers = [p["expected_answer"] for p in eval_prompts
+                      if p["type"] in ("recall", "recall_adversarial") and p.get("expected_answer")]
+    for p in eval_prompts:
+        if p["type"] in ("recall", "recall_adversarial") and p.get("expected_answer"):
+            candidates = [a for a in recall_answers if a != p["expected_answer"]]
+            p["wrong_answer"] = _random.choice(candidates) if candidates else ""
 
     all_results = []
     deletion_latencies = {}

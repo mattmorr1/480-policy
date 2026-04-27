@@ -11,7 +11,12 @@
       "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -c \"import faiss; print\\(''faiss ok'', faiss.__version__\\)\")",
       "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" src/eval_harness.py --output_dir results/ --mock_judge)",
       "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -m pip install torch --index-url https://download.pytorch.org/whl/cu124 --force-reinstall)",
-      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -c \"import torch; print\\(''CUDA:'', torch.cuda.is_available\\(\\), torch.version.cuda\\)\")"
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -c \"import torch; print\\(''CUDA:'', torch.cuda.is_available\\(\\), torch.version.cuda\\)\")",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -u src/eval_harness.py --output_dir results/ --mock_judge)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" src/train_lora.py --mode per_user --user_id forget_author --output_dir adapters/forget_author/)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" src/analyze.py --results_dir results/ --output_dir results/)",
+      "Bash(curl:*)",
+      "Bash(\"/c/Users/mmorr/anaconda3/envs/policy/python.exe\" -u src/eval_harness.py --output_dir results/)"
     ]
   }
 }

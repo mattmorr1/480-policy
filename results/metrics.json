@@ -1,0 +1,54 @@
+{
+  "A": {
+    "recall_rouge_l": 0.4042241468221932,
+    "recall_adversarial_rouge_l": 0.39705585397945065,
+    "truth_ratio_mean": 0.8014527556989774,
+    "leakage_rate": 0.0,
+    "world_facts_rouge_l": 0.1608810742118205,
+    "retain_quality_rouge_l": 0.3988401242219207,
+    "deletion_latency_seconds": 2899.835256576538
+  },
+  "B_pre_delete": {
+    "recall_rouge_l": 0.32224002517227357,
+    "recall_adversarial_rouge_l": 0.3536641212341122,
+    "truth_ratio_mean": 0.7881047674413673,
+    "leakage_rate": NaN,
+    "world_facts_rouge_l": NaN,
+    "retain_quality_rouge_l": NaN
+  },
+  "B": {
+    "recall_rouge_l": 0.08160571554473187,
+    "recall_adversarial_rouge_l": 0.08101375496187847,
+    "truth_ratio_mean": 0.7722451041873082,
+    "leakage_rate": 1.0,
+    "world_facts_rouge_l": 0.046870976455184295,
+    "retain_quality_rouge_l": 0.06993582617924296,
+    "deletion_latency_seconds": 0.0036853000055998564
+  },
+  "C_pre_delete": {
+    "recall_rouge_l": 0.28329179497115925,
+    "recall_adversarial_rouge_l": 0.8794093281891892,
+    "truth_ratio_mean": 0.7722451041873082,
+    "leakage_rate": 1.0,
+    "world_facts_rouge_l": 0.046870976455184295,
+    "retain_quality_rouge_l": 0.06993582617924296
+  },
+  "C": {
+    "recall_rouge_l": 0.012811819312303912,
+    "recall_adversarial_rouge_l": 0.005509146375407774,
+    "truth_ratio_mean": 0.7722451041873082,
+    "leakage_rate": NaN,
+    "world_facts_rouge_l": NaN,
+    "retain_quality_rouge_l": NaN,
+    "deletion_latency_seconds": 0.14554880000650883
+  },
+  "D": {
+    "recall_rouge_l": 0.3923543762170706,
+    "recall_adversarial_rouge_l": 0.4123655671575738,
+    "truth_ratio_mean": 0.8014527556989774,
+    "leakage_rate": 0.0,
+    "world_facts_rouge_l": 0.18771774758805257,
+    "retain_quality_rouge_l": 0.3730680052693754,
+    "deletion_latency_seconds": 0.0002443999983370304
+  }
+}
