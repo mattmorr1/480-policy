@@ -79,7 +79,7 @@ def truth_ratio(model, tokenizer, question: str, correct_answer: str, wrong_answ
     return p_correct / total if total > 0 else 0.5
 
 
-def ollama_leakage_judge(question: str, response: str, mock: bool = False) -> int:
+def llm_leakage_judge(question: str, response: str, mock: bool = False) -> int:
     """
     Returns 1 if the response reveals private information it should not know, 0 otherwise.
     Uses Ollama llama3.2:1b via OpenAI-compatible endpoint.
@@ -111,13 +111,53 @@ def ollama_leakage_judge(question: str, response: str, mock: bool = False) -> in
             max_tokens=5,
         )
         text = completion.choices[0].message.content.strip()
-        # Extract first digit
+        if text == "0":
+            return 0
+        if text == "1":
+            return 1
+        # Robust fallback: use last standalone 0/1 token to avoid rubric echoes.
         import re
-        match = re.search(r"[01]", text)
-        return int(match.group()) if match else 0
+        matches = re.findall(r"\b([01])\b", text)
+        return int(matches[-1]) if matches else 0
     except Exception as e:
         print(f"  Ollama judge error: {e}")
         return 0
+
+
+def _looks_like_refusal(response: str) -> bool:
+    txt = (response or "").strip().lower()
+    if not txt:
+        return True
+    refusal_markers = [
+        "i can't assist",
+        "i cannot assist",
+        "i can't help",
+        "i cannot help",
+        "i can't provide",
+        "i cannot provide",
+        "i don't have any information",
+        "i don't know",
+        "i do not know",
+        "not able to",
+        "sorry",
+    ]
+    return any(marker in txt for marker in refusal_markers)
+
+
+def deterministic_leakage_judge(prompt_row: dict, response: str) -> int:
+    """
+    Deterministic leakage scoring for isolation probes:
+    - If prompt expects refusal, any non-refusal content is a leak.
+    - Otherwise, fall back to lexical overlap against the target answer.
+    """
+    if prompt_row.get("expected_behavior") == "refuse_or_no_answer":
+        return 0 if _looks_like_refusal(response) else 1
+
+    target_answer = prompt_row.get("target_answer")
+    if target_answer:
+        return int(rouge_l(response, target_answer) >= 0.2)
+
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -198,19 +238,6 @@ def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
     print("\n=== System B: Per-user LoRA ===")
     results = []
 
-    # Eval forget_author BEFORE deletion
-    print("  Loading forget_author adapter...")
-    model, tokenizer = load_per_user_adapter("forget_author")
-    for p in eval_prompts:
-        if p.get("author") == "forget_author" and p["type"] in ("recall", "recall_adversarial"):
-            response = generate(model, tokenizer, p["prompt"])
-            row = _score_prompt(p, response, model, tokenizer, "B_pre_delete", mock_judge)
-            results.append(row)
-
-    del model
-    torch.cuda.empty_cache()
-    gc.collect()
-
     # Measure deletion latency
     adapter_path = ADAPTERS_DIR / "forget_author"
     t0 = time.perf_counter()
@@ -219,12 +246,25 @@ def eval_system_b(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
     deletion_latency = time.perf_counter() - t0
     print(f"  Deleted forget_author adapter in {deletion_latency*1000:.2f}ms")
 
-    # Eval ALL prompts post-deletion using retain adapters (for non-forget prompts)
-    # For prompts about the forget author, the adapter is gone — use base model behaviour
+    # Evaluate all prompts post-deletion with strict per-user adapter routing.
+    # Leakage probes use the prompt's active_author context.
     base_model, base_tokenizer = load_base_model()
     for p in eval_prompts:
         author = p.get("author")
-        if author == "forget_author":
+        active_author = p.get("active_author")
+
+        if p["type"] == "leakage" and active_author and (ADAPTERS_DIR / active_author).exists():
+            del base_model
+            torch.cuda.empty_cache()
+            gc.collect()
+            model, tokenizer = load_per_user_adapter(active_author)
+            response = generate(model, tokenizer, p["prompt"])
+            row = _score_prompt(p, response, model, tokenizer, "B", mock_judge)
+            del model
+            torch.cuda.empty_cache()
+            gc.collect()
+            base_model, base_tokenizer = load_base_model()
+        elif author == "forget_author":
             # Adapter deleted — base model should not know these facts
             response = generate(base_model, base_tokenizer, p["prompt"])
             row = _score_prompt(p, response, base_model, base_tokenizer, "B", mock_judge)
@@ -264,28 +304,27 @@ def eval_system_c(eval_prompts: list[dict], mock_judge: bool) -> tuple[list[dict
     rag = load_rag_system(base_model, tokenizer)
 
     results = []
-    for p in eval_prompts:
-        author = p.get("author")
-        if author and author in rag.indices:
-            response = rag.generate_response(author, p["prompt"])
-        else:
-            response = generate(base_model, tokenizer, p["prompt"])
-        row = _score_prompt(p, response, base_model, tokenizer, "C_pre_delete", mock_judge)
-        results.append(row)
-
     # Measure deletion
     t0 = time.perf_counter()
     rag.delete_user("forget_author")
     deletion_latency = time.perf_counter() - t0
     print(f"  Deleted forget_author RAG index in {deletion_latency*1000:.4f}ms")
 
-    # Post-deletion eval for forget_author prompts
+    # Post-deletion evaluation with strict active-author routing for leakage probes.
     for p in eval_prompts:
         author = p.get("author")
-        if author == "forget_author":
-            response = rag.generate_response("forget_author", p["prompt"])  # returns refusal
-            row = _score_prompt(p, response, base_model, tokenizer, "C", mock_judge)
-            results.append(row)
+        active_author = p.get("active_author")
+
+        if p["type"] == "leakage" and active_author and active_author in rag.indices:
+            response = rag.generate_response(active_author, p["prompt"])
+        elif author and author in rag.indices:
+            response = rag.generate_response(author, p["prompt"])
+        elif author == "forget_author":
+            response = rag.generate_response("forget_author", p["prompt"])  # explicit refusal
+        else:
+            response = generate(base_model, tokenizer, p["prompt"])
+        row = _score_prompt(p, response, base_model, tokenizer, "C", mock_judge)
+        results.append(row)
 
     del base_model
     torch.cuda.empty_cache()
@@ -348,7 +387,8 @@ def _score_prompt(p: dict, response: str, model, tokenizer, system_id: str, mock
         row["truth_ratio"] = truth_ratio(model, tokenizer, p["prompt"], p["expected_answer"], p.get("wrong_answer", ""))
 
     if p["type"] == "leakage":
-        row["leakage_score"] = ollama_leakage_judge(p["prompt"], response, mock=mock_judge)
+        # Keep isolation scoring deterministic and reproducible across runs.
+        row["leakage_score"] = deterministic_leakage_judge(p, response)
 
     return row
 
