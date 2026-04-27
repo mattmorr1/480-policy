@@ -1,0 +1,13 @@
+logs/
+results/
+shared_adapter/
+adapters/
+rag_index/
+data/
+*.log
+*.out
+*.err
+*.json
+*.jsonl
+*.jsonl.gz
+*.jsonl.gz.part
